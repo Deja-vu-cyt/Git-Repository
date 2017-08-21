@@ -1,0 +1,300 @@
+unit ufrmProject2;
+
+interface
+
+uses
+  Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, System.Classes,
+  System.Math, System.Types, Vcl.FileCtrl,
+  Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs, DBGridEhGrouping,
+  ToolCtrlsEh, DBGridEhToolCtrls, DynVarsEh, Vcl.StdCtrls, Vcl.ExtCtrls,
+  Vcl.Menus, EhLibVCL, GridsEh, DBAxisGridsEh, DBGridEh;
+
+type
+  TfrmProject2 = class(TFrame)
+    dbgrdDataTable: TDBGridEh;
+    Panel1: TPanel;
+    btnClearColumn: TButton;
+    btnExportToFile: TButton;
+    btnSetColCount: TButton;
+    btnQueryData2: TButton;
+    Panel4: TPanel;
+    pnlUseTime: TPanel;
+    pnlClearColumn: TPanel;
+    pnlInputData: TPanel;
+    btnRearrangeClearColumn: TButton;
+    btnSortClearColumn: TButton;
+    btnCompareClearColumn: TButton;
+    btnBuildClearColumn: TButton;
+    btnQueryData3: TButton;
+    btnBuildClearColumn2: TButton;
+    btnBuildClearColumn3: TButton;
+    pnlQueryData3: TPanel;
+    Panel3: TPanel;
+    dbgrdClearColumn: TDBGridEh;
+    dbgrdFileList: TDBGridEh;
+    dbgrdResultData: TDBGridEh;
+    Panel5: TPanel;
+    pnlQueryData2: TPanel;
+    btnQueryData: TButton;
+    Label1: TLabel;
+    edtClearColumnFileName: TEdit;
+    Label2: TLabel;
+    edtInputDataFilePath: TEdit;
+    Label3: TLabel;
+    edtInvalidColCount: TEdit;
+    OpenDialog: TOpenDialog;
+    procedure btnSortClearColumnClick(Sender: TObject);
+    procedure btnRearrangeClearColumnClick(Sender: TObject);
+    procedure btnCompareClearColumnClick(Sender: TObject);
+    procedure btnBuildClearColumn2Click(Sender: TObject);
+    procedure btnBuildClearColumn3Click(Sender: TObject);
+    procedure btnBuildClearColumnClick(Sender: TObject);
+    procedure FrameResize(Sender: TObject);
+    procedure dbgrdResultDataAdvDrawDataCell(Sender: TCustomDBGridEh; Cell,
+      AreaCell: TGridCoord; Column: TColumnEh; const ARect: TRect;
+      var Params: TColCellParamsEh; var Processed: Boolean);
+    procedure Panel5DblClick(Sender: TObject);
+    procedure dbgrdDataTableAdvDrawDataCell(Sender: TCustomDBGridEh; Cell,
+      AreaCell: TGridCoord; Column: TColumnEh; const ARect: TRect;
+      var Params: TColCellParamsEh; var Processed: Boolean);
+    procedure edtClearColumnFileNameDblClick(Sender: TObject);
+    procedure edtInputDataFilePathDblClick(Sender: TObject);
+  private
+    FQueryValue: TIntegerDynArray;
+  public
+    procedure BuildDataTableGridColumn(AColCount: Integer; AFlag: Integer = 0);
+    procedure BuildClearColumnGridColumn(AColCount: Integer);
+    property QueryValue: TIntegerDynArray read FQueryValue write FQueryValue;
+  end;
+
+var
+  frmProject2: TfrmProject2;
+
+implementation
+
+uses
+  udmProject2;
+
+{$R *.dfm}
+
+procedure TfrmProject2.btnBuildClearColumn2Click(Sender: TObject);
+begin
+  dmProject2.BuildClearColumn(1);
+end;
+
+procedure TfrmProject2.btnBuildClearColumn3Click(Sender: TObject);
+begin
+  dmProject2.BuildClearColumn(2);
+end;
+
+procedure TfrmProject2.btnBuildClearColumnClick(Sender: TObject);
+begin
+  dmProject2.BuildClearColumn;
+end;
+
+procedure TfrmProject2.btnCompareClearColumnClick(Sender: TObject);
+begin
+  dmProject2.CompareClearColumn;
+end;
+
+procedure TfrmProject2.btnRearrangeClearColumnClick(Sender: TObject);
+begin
+  dmProject2.RearrangeClearColumn;
+end;
+
+procedure TfrmProject2.btnSortClearColumnClick(Sender: TObject);
+begin
+  dmProject2.SortClearColumn;
+end;
+
+procedure TfrmProject2.dbgrdDataTableAdvDrawDataCell(Sender: TCustomDBGridEh;
+  Cell, AreaCell: TGridCoord; Column: TColumnEh; const ARect: TRect;
+  var Params: TColCellParamsEh; var Processed: Boolean);
+var
+  i, ColNo: Integer;
+  i64, v: Int64;
+begin
+  i64 := 1;
+  Params.Background := clWhite;
+  if TryStrToInt(Column.Title.Caption, ColNo) then
+  begin
+    v := Column.Field.AsLargeInt;
+    Params.Text := '';
+    if v = i64 shl (64 - ColNo) or v then
+    begin
+      Params.Text := ColNo.ToString;
+      if ColNo < 10 then Params.Text := '0' + Params.Text;
+
+      if Sender = dbgrdDataTable then
+      begin
+        for i := Low(FQueryValue) to High(FQueryValue) do
+          if ColNo = FQueryValue[i] then
+          begin
+            Params.Background := clBlack;
+            with Sender as TDBGridEh do
+            begin
+              Canvas.Font.Color := clWhite;
+            end;
+            Break;
+          end;
+      end;
+    end;
+  end;
+end;
+
+procedure TfrmProject2.dbgrdResultDataAdvDrawDataCell(Sender: TCustomDBGridEh;
+  Cell, AreaCell: TGridCoord; Column: TColumnEh; const ARect: TRect;
+  var Params: TColCellParamsEh; var Processed: Boolean);
+var
+  i, ColNo: Integer;
+  i64, v: Int64;
+  CompareField: string;
+begin
+  Exit;
+  i64 := 1;
+  Params.Background := clWhite;
+  if TryStrToInt(Column.Title.Caption, ColNo) then
+  begin
+    v := Column.Field.AsLargeInt;
+    Params.Text := '';
+    if v = i64 shl (64 - ColNo) or v then
+    begin
+      Params.Text := ColNo.ToString;
+      if ColNo < 10 then Params.Text := '0' + Params.Text;
+
+      v := Column.Field.DataSet.FieldByName('CompareField' + Ceil(ColNo / 64).ToString).AsLargeInt;
+      if v = i64 shl (64 - ColNo) or v then
+      begin
+        Params.Background := clBlack;
+        with Sender as TDBGridEh do Canvas.Font.Color := clWhite;
+      end;
+    end;
+  end;
+end;
+
+procedure TfrmProject2.edtClearColumnFileNameDblClick(Sender: TObject);
+begin
+  OpenDialog.Title := '选择"清列行"文件';
+  OpenDialog.Filter := '*|*.txt;*.xls;*.xlsx';
+  if not OpenDialog.Execute then Exit;
+  TEdit(Sender).Text := OpenDialog.FileName;
+end;
+
+procedure TfrmProject2.edtInputDataFilePathDblClick(Sender: TObject);
+var
+  FilePath: string;
+begin
+  if not SelectDirectory('导入数据文件夹', '', FilePath) then Exit;
+  TEdit(Sender).Text := FilePath;
+end;
+
+procedure TfrmProject2.FrameResize(Sender: TObject);
+begin
+  pnlClearColumn.Left := dbgrdClearColumn.Left;
+  pnlInputData.Left := dbgrdFileList.Left;
+  pnlQueryData2.Left := dbgrdDataTable.Left;
+  pnlQueryData3.Left := dbgrdResultData.Left;
+end;
+
+procedure TfrmProject2.Panel5DblClick(Sender: TObject);
+begin
+  btnQueryData.Visible := dbgrdDataTable.Tag = 1;
+  dbgrdFileList.FindFieldColumn('Chosed').Visible := dbgrdDataTable.Tag = 1;
+  dbgrdFileList.FindFieldColumn('RowCount').Visible := dbgrdDataTable.Tag = 1;
+
+  if dbgrdDataTable.Tag = 1 then dbgrdDataTable.Tag := 0
+  else dbgrdDataTable.Tag := 1;
+end;
+
+procedure TfrmProject2.BuildDataTableGridColumn(AColCount: Integer; AFlag: Integer = 0);
+var
+  i: Integer;
+begin
+  dbgrdDataTable.Columns.Clear;
+  case AFlag of
+    0:
+    begin
+      with dbgrdDataTable.Columns.Add do
+      begin
+        FieldName := 'FileNo';
+        Alignment := TAlignment.taCenter;
+        Title.Alignment := TAlignment.taCenter;
+        Title.Caption := '文本号';
+        Width := 55;
+      end;
+    end;
+  end;
+  with dbgrdDataTable.Columns.Add do
+  begin
+    FieldName := 'ValueCount';
+    Alignment := TAlignment.taCenter;
+    Title.Alignment := TAlignment.taCenter;
+    Title.Caption := '①.该行列数';
+    Width := 100;
+  end;
+  with dbgrdDataTable.Columns.Add do
+  begin
+    FieldName := 'ConformColCount';
+    Alignment := TAlignment.taCenter;
+    Title.Alignment := TAlignment.taCenter;
+    Title.Caption := '②.相同列数';
+    Width := 100;
+  end;
+  with dbgrdDataTable.Columns.Add do
+  begin
+    FieldName := 'FolderNo';
+    Alignment := TAlignment.taCenter;
+    Title.Alignment := TAlignment.taCenter;
+    Title.Caption := '③.所在文件夹行号';
+    Width := 140;
+  end;
+  with dbgrdDataTable.Columns.Add do
+  begin
+    FieldName := 'FileNo';
+    Alignment := TAlignment.taCenter;
+    Title.Alignment := TAlignment.taCenter;
+    Title.Caption := '④.所在文本行号';
+    Width := 140;
+  end;
+  with dbgrdDataTable.Columns.Add do
+  begin
+    FieldName := 'RowNo';
+    Alignment := TAlignment.taCenter;
+    Title.Alignment := TAlignment.taCenter;
+    Title.Caption := '⑤.所在文本第几行';
+    Width := 140;
+  end;
+  for i := 1 to AColCount do
+  begin
+    with dbgrdDataTable.Columns.Add do
+    begin
+      FieldName := 'Field' + Ceil(i / 64).ToString;
+      Alignment := TAlignment.taCenter;
+      Title.Alignment := TAlignment.taCenter;
+      Title.Caption := i.ToString;
+      if i < 10 then Title.Caption := '0' + Title.Caption;
+      Width := 45;
+    end;
+  end;
+end;
+
+procedure TfrmProject2.BuildClearColumnGridColumn(AColCount: Integer);
+var
+  i: Integer;
+begin
+  dbgrdClearColumn.Columns.Clear;
+  for i := 1 to AColCount do
+  begin
+    with dbgrdClearColumn.Columns.Add do
+    begin
+      FieldName := 'Field' + Ceil(i / 64).ToString;
+      Alignment := TAlignment.taCenter;
+      Title.Alignment := TAlignment.taCenter;
+      Title.Caption := i.ToString;
+      if i < 10 then Title.Caption := '0' + Title.Caption;
+      Width := 45;
+    end;
+  end;
+end;
+
+end.

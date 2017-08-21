@@ -1,0 +1,1770 @@
+unit udmProject2;
+
+interface
+
+uses
+  uLog, uGlobal,
+  System.SysUtils, System.Classes, System.Math, System.JSON, System.Threading,
+  System.IOUtils, System.Variants, System.Generics.Collections, Winapi.Windows,
+  FireDAC.Stan.Intf, FireDAC.Stan.Option, DBGridEh, System.Types,
+  FireDAC.Stan.Param, FireDAC.Stan.Error, FireDAC.DatS, FireDAC.Phys.Intf,
+  FireDAC.DApt.Intf, FireDAC.Stan.Async, FireDAC.DApt, Data.DB,
+  FireDAC.Comp.DataSet, FireDAC.Comp.Client, FireDAC.UI.Intf, FireDAC.Stan.Def,
+  FireDAC.Stan.Pool, FireDAC.Phys,
+  Vcl.Dialogs, Vcl.CheckLst, Vcl.FileCtrl, Vcl.StdCtrls, Vcl.Controls,
+  XLSSheetData5, XLSReadWriteII5, Xc12DataStyleSheet5, Xc12Utils5, XLSCmdFormat5,
+  FireDAC.VCLUI.Wait, FireDAC.Phys.MSSQLDef,
+  FireDAC.Phys.ODBCBase, FireDAC.Phys.MSSQL, FireDAC.Comp.UI, MemTableDataEh,
+  DataDriverEh, MemTableEh;
+
+type
+  TdmProject2 = class(TDataModule)
+    FDQuery: TFDQuery;
+    FDConnection: TFDConnection;
+    fdqDataTable: TFDQuery;
+    dsDataTable: TDataSource;
+    fdqFileList: TFDQuery;
+    dsFileList: TDataSource;
+    dsClearColumn: TDataSource;
+    fdqClearColumn: TFDQuery;
+    fdqKeyValue: TFDQuery;
+    fdqProject: TFDQuery;
+    dsProject: TDataSource;
+    FDMemTable: TFDMemTable;
+    fdqResultData: TFDQuery;
+    dsResultData: TDataSource;
+    fdconnFile: TFDConnection;
+    fdqDataTable2: TFDQuery;
+    procedure DataModuleCreate(Sender: TObject);
+    procedure fdqTaskListNewRecord(DataSet: TDataSet);
+    procedure DataModuleDestroy(Sender: TObject);
+  private
+    FDatabaseName: string;
+    FWorkState: TWorkState;
+    FStopTime: Boolean;
+
+    l: TStringList;
+    FFileName, FFileName2, SaveFileName: string;
+    StartSerialNo: Integer;
+
+    procedure SetWorkState(AValue: TWorkState);
+    procedure StartTime;
+    procedure StopTime;
+    function GetFieldString: string;
+
+    procedure OpenFileList;
+    procedure OpenClearColumn;
+    procedure WriteKeyValue(AKey: string; AValue: Variant);
+    function ReadKeyValue(AKey: string; ADefaultValue: Variant): string;
+
+    procedure DeleteRepeatRow(AreAllFiles: Boolean);
+    procedure LoadData(AFileName: string; var Arr: TIntDyadicArray);
+  public
+    procedure InitDataTable;
+    procedure InputData;
+    procedure InputResultData;
+    procedure InputClearColumn;
+    procedure SetDeleteInvalidRow;
+    procedure ClearColumn;
+    procedure SortRow;
+    procedure ExportToFile;
+
+    procedure BuildClearColumn(AFlag: Integer = 0);
+    procedure SortClearColumn;
+    procedure RearrangeClearColumn;
+    procedure CompareClearColumn;
+
+    procedure Init;
+    procedure QueryData;
+    procedure QueryData2;
+    procedure QueryData3;
+  end;
+
+var
+  dmProject2: TdmProject2;
+
+implementation
+
+uses
+  ufrmProject2, ufrmInput, udmConfig, ufrmSingleChoice, ufrmConfirm, udmRegister,
+  ufrmProject, ufrmQueryConfig2, ufrmQueryConfig3, UfrmMain, udmMain;
+
+{%CLASSGROUP 'VCL.Controls.TControl'}
+
+{$R *.dfm}
+
+procedure TdmProject2.DataModuleCreate(Sender: TObject);
+begin
+  frmProject2 := TfrmProject2.Create(frmMain);
+  frmProject2.Align := alClient;
+  frmProject2.dbgrdFileList.DataSource := dsFileList;
+  frmProject2.dbgrdDataTable.DataSource := dsDataTable;
+  frmProject2.dbgrdClearColumn.DataSource := dsClearColumn;
+  frmProject2.dbgrdResultData.DataSource := dsResultData;
+
+  l := TStringList.Create;
+end;
+
+procedure TdmProject2.DataModuleDestroy(Sender: TObject);
+begin
+  l.Free;
+end;
+
+procedure TdmProject2.fdqTaskListNewRecord(DataSet: TDataSet);
+begin
+  DataSet.FieldByName('Executed').AsBoolean := False;
+end;
+
+procedure TdmProject2.SetWorkState(AValue: TWorkState);
+var
+  CanWork: Boolean;
+begin
+  FWorkState := AValue;
+  TThread.Synchronize(nil, procedure
+  begin
+    CanWork := not dmRegister.ProbationExpired and (FWorkState = wsNone) and (FDatabaseName <> 'master');
+
+    frmProject2.btnInit.Enabled := CanWork;
+    frmProject2.btnClearColumn.Enabled := CanWork or (FWorkState = wsClearColumn);
+    frmProject2.btnExportToFile.Enabled := CanWork or (FWorkState = wsExportToFile);
+    frmProject2.btnQueryData.Enabled := CanWork;
+    frmProject2.btnQueryData2.Enabled := CanWork;
+
+    frmProject2.btnSortClearColumn.Enabled := CanWork;
+    frmProject2.btnRearrangeClearColumn.Enabled := CanWork;
+    frmProject2.btnCompareClearColumn.Enabled := CanWork;
+    frmProject2.btnBuildClearColumn.Enabled := CanWork;
+    frmProject2.btnBuildClearColumn2.Enabled := CanWork;
+    frmProject2.btnBuildClearColumn3.Enabled := CanWork;
+    frmProject2.btnQueryData3.Enabled := CanWork;
+
+    frmProject2.dbgrdFileList.Enabled := CanWork;
+    frmProject2.dbgrdDataTable.Enabled := CanWork;
+    frmProject2.dbgrdClearColumn.Enabled := CanWork;
+    frmProject2.dbgrdResultData.Enabled := CanWork;
+
+    case FWorkState of
+      wsClearColumn:
+      begin
+        frmProject2.btnClearColumn.Tag := 1;
+        frmProject2.btnClearColumn.Caption := '2.停止';
+      end;
+      wsExportToFile:
+      begin
+        frmProject2.btnExportToFile.Tag := 1;
+        frmProject2.btnExportToFile.Caption := '3.停止';
+      end
+      else
+      begin
+        frmProject2.btnClearColumn.Tag := 0;
+        frmProject2.btnClearColumn.Caption := '2.执行“清列合并”';
+        frmProject2.btnExportToFile.Tag := 0;
+        frmProject2.btnExportToFile.Caption := '3.导出“数据”（清列合并后设定）';
+      end;
+    end;
+  end);
+end;
+
+procedure TdmProject2.StartTime;
+begin
+  FStopTime := False;
+
+  TTask.Create(procedure
+  var
+    UseTime: string;
+    StartTime: Cardinal;
+    Day, Hour, Min, Sec, Seconds: Integer;
+  begin
+    StartTime := GetTickCount;
+    while True do
+    begin
+      Seconds := (GetTickCount - StartTime) div  1000;
+      Day := Seconds div 86400;
+      Hour := (Seconds mod 86400) div 3600;
+      Min := (Seconds mod 3600) div 60;
+      Sec := Seconds mod 60;
+      UseTime := Format('%d日%d时%d分%d秒', [Day, Hour, Min, Sec]);
+
+      TThread.Synchronize(nil, procedure
+      begin
+        frmProject2.pnlUseTime.Caption := UseTime;
+      end);
+
+      if FStopTime then Break;
+      Sleep(1000);
+    end;
+  end).Start;
+end;
+
+procedure TdmProject2.StopTime;
+begin
+  TThread.Synchronize(nil, procedure
+  begin
+    FStopTime := True;
+  end);
+end;
+
+function TdmProject2.GetFieldString: string;
+var
+  i: Integer;
+begin
+  Result := '';
+  for i := 1 to Ceil(ReadKeyValue('ColCount', 0).ToInteger / 64) do
+  begin
+    if not Result.IsEmpty then Result := Result + ', ';
+    Result := Result + 'Field' + i.ToString;
+  end;
+end;
+
+procedure TdmProject2.OpenFileList;
+begin
+  dsFileList.DataSet := nil;
+  if fdqFileList.Active then fdqFileList.Refresh
+  else fdqFileList.Open;
+  fdqFileList.FieldByName('Chosed').ReadOnly := False;
+  TThread.Synchronize(nil, procedure
+  begin
+    dsFileList.DataSet := fdqFileList;
+  end);
+end;
+
+procedure TdmProject2.OpenClearColumn;
+begin
+  dsClearColumn.DataSet := nil;
+  if fdqClearColumn.Active then fdqClearColumn.Refresh
+  else fdqClearColumn.Open;
+  TThread.Synchronize(nil, procedure
+  begin
+    dsClearColumn.DataSet := fdqClearColumn;
+  end);
+end;
+
+procedure TdmProject2.WriteKeyValue(AKey: string; AValue: Variant);
+begin
+  if fdqKeyValue.Locate('KeyName', AKey, []) then fdqKeyValue.Edit
+  else
+  begin
+    fdqKeyValue.Append;
+    fdqKeyValue.FieldByName('KeyName').AsString := AKey;
+  end;
+  fdqKeyValue.FieldByName('KeyValue').AsString := VarToStr(AValue).Trim;
+  fdqKeyValue.Post;
+end;
+
+function TdmProject2.ReadKeyValue(AKey: string; ADefaultValue: Variant): string;
+begin
+  if fdqKeyValue.Active and fdqKeyValue.Locate('KeyName', AKey, []) then
+    Result := fdqKeyValue.FieldByName('KeyValue').AsString.Trim
+  else Result := VarToStr(ADefaultValue).Trim;
+end;
+
+procedure TdmProject2.DeleteRepeatRow(AreAllFiles: Boolean);
+var
+  s, sField: string;
+begin
+  sField := GetFieldString;
+  if not AreAllFiles then sField := 'FileNo, ' + sField;
+
+  s := 'WITH CTE AS (' + #$D#$A
+    + 'SELECT ROW_NUMBER() OVER(PARTITION BY %s ORDER BY (SELECT 0)) RowNo' + #$D#$A
+    + 'FROM DataTable' + #$D#$A
+    + ')' + #$D#$A
+    + 'DELETE FROM CTE WHERE RowNo > 1';
+  s := Format(s, [GetFieldString]);
+
+  FDConnection.ExecSQL(s);
+end;
+
+procedure TdmProject2.LoadData(AFileName: string; var Arr: TIntDyadicArray);
+var
+  i, ColNo, RowNo: Integer;
+  s, sColNo: string;
+begin
+  l.LoadFromFile(AFileName);
+  for i := 0 to l.Count - 1 do
+  begin
+    if not TryStrToInt(l.Names[i].Trim, RowNo) then Continue;
+    if RowNo > Length(Arr) then SetLength(Arr, RowNo);
+    s := l.ValueFromIndex[i];
+    repeat
+      sColNo := SeparateDigit(s);
+      if TryStrToInt(sColNo, ColNo) then
+      begin
+        SetLength(Arr[RowNo - 1], Length(Arr[RowNo - 1]) + 1);
+        Arr[RowNo - 1][Length(Arr[RowNo - 1]) - 1] := ColNo;
+      end;
+    until s = '';
+  end;
+end;
+
+procedure TdmProject2.InitDataTable;
+var
+  ColCount: Integer;
+begin
+  ColCount := ReadKeyValue('ColCount', 20).ToInteger;
+  if not Input('', '请设置列数：', ColCount) then Exit;
+  WriteKeyValue('ColCount', ColCount);
+  WriteKeyValue('ClearColumnType', 0);
+  WriteKeyValue('ClearColumnFileNo', 0);
+  WriteKeyValue('ClearColNo', 1);
+  WriteKeyValue('CombineFileNo', 0);
+
+  frmProject2.BuildDataTableGridColumn(ColCount, 1);
+  frmProject2.BuildClearColumnGridColumn(ColCount);
+
+  TTask.Create(procedure
+  var
+    s, sField, FileName: string;
+    i: Integer;
+  begin
+    SetWorkState(wsExecuting);
+    StartTime;
+    try
+      try
+        fdqProject.Filtered := False;
+        fdqProject.First;
+        while not fdqProject.Eof do
+        begin
+          FileName := fdqProject.FieldByName('FileName').AsString;
+          if TFile.Exists(FileName) then TFile.Delete(FileName);
+
+          fdqProject.Delete;
+        end;
+
+        s := 'DELETE FROM ClearColumn';
+        FDConnection.ExecSQL(s);
+
+        OpenClearColumn;
+        OpenFileList;
+
+        StopTime;
+      except
+        on e: Exception do
+        begin
+          e.Message := '设置列数失败：' + e.Message;
+          FLog.Log(e.Message);
+        end;
+      end;
+    finally
+      StopTime;
+      SetWorkState(wsNone);
+    end;
+  end).Start;
+end;
+
+procedure TdmProject2.InputData;
+begin
+  frmProject2.OpenDialog.Title := '选择Excel文件';
+  frmProject2.OpenDialog.Filter := '*|*.txt;*.xls;*.xlsx';
+  frmProject2.OpenDialog.Options := frmProject2.OpenDialog.Options + [ofAllowMultiSelect];
+  if not frmProject2.OpenDialog.Execute then Exit;
+
+  TTask.Create(procedure
+  var
+    i, j, RowIndex, StartIndex, EndIndex, ValueIndex, FileNo, ColCount, ValueCount: Integer;
+    s, FileName, sFileNo, sColNo: string;
+    ColNo: Int64;
+    ValueArr: array of Int64;
+
+    procedure CheckStop;
+    begin
+      TThread.Synchronize(nil, procedure
+      begin
+        //if frmProject2.btnInputData.Tag = 0 then Abort;
+      end);
+    end;
+
+    procedure AddRow(IsLast: Boolean);
+    var
+      i: Integer;
+    begin
+      with FDQuery do
+      begin
+        Append;
+        for i := Low(ValueArr) to High(ValueArr) do
+          FieldByName('Field' + (i + 1).ToString).AsLargeInt := ValueArr[i];
+        FieldByName('FileNo').AsInteger := FileNo;
+        FieldByName('ValueCount').AsInteger := ValueCount;
+        Post;
+
+        if IsLast or (RecordCount = 10000) then
+        begin
+          ApplyUpdates;
+          Close;
+          Open;
+          OpenFileList;
+        end;
+      end;
+      CheckStop;
+    end;
+  begin
+    SetWorkState(wsInputData);
+    StartTime;
+    try
+      try
+        for i := 0 to frmProject2.OpenDialog.Files.Count - 1 do
+        begin
+          CheckStop;
+          FileName := frmProject2.OpenDialog.Files[i];
+          sFileNo := ChangeFileExt(ExtractFileName(FileName), '');
+          StartIndex := sFileNo.IndexOf('(');
+          EndIndex := sFileNo.IndexOf(')');
+          if (StartIndex > 0) and (EndIndex > 0) and (StartIndex < EndIndex) then
+            sFileNo := sFileNo.Substring(StartIndex + 1, EndIndex - StartIndex - 1);
+          if not TryStrToInt(sFileNo, FileNo) then
+          begin
+            FLog.Log('导入失败，文件名格式不对');
+            Continue;
+          end;
+          FLog.Log(Format('正在导入数据：%s，请稍等...', [ExtractFileName(FileName)]));
+
+          ColCount := ReadKeyValue('ColCount', 0).ToInteger;
+          SetLength(ValueArr, Ceil(ColCount / 64));
+          FDQuery.Open('SELECT TOP 0 * FROM DataTable');
+
+          if LowerCase(ExtractFileExt(FileName)) = '.txt' then
+          begin
+            l.LoadFromFile(FileName);
+            for RowIndex := l.Count - 1 downto 0 do
+              if l[RowIndex].Trim.IsEmpty then l.Delete(RowIndex);
+            for RowIndex := 0 to l.Count - 1 do
+            begin
+              s := l[RowIndex].Trim;
+              s := s.Substring(s.IndexOf('=') + 1);
+              ValueCount := 0;
+              for ValueIndex := Low(ValueArr) to High(ValueArr) do ValueArr[ValueIndex] := 0;
+              repeat
+                sColNo := SeparateDigit(s);
+                if TryStrToInt(sColNo, j) then
+                begin
+                  ColNo := j;
+                  ValueIndex := Ceil(ColNo / 64) - 1;
+                  ValueArr[ValueIndex] := ValueArr[ValueIndex] or (i64 shl (64 - ColNo));
+                  Inc(ValueCount);
+                end;
+              until s = '';
+
+              AddRow(RowIndex >= l.Count - 1);
+            end;
+          end
+          else
+          begin
+            {XLS.Filename := FileName;
+            XLS.Read;
+            for RowIndex := 1 to XLS[0].LastRow do
+            begin
+              ValueCount := 0;
+              for ValueIndex := Low(ValueArr) to High(ValueArr) do ValueArr[ValueIndex] := 0;
+              for ColNo := 1 to ColCount do
+              begin
+                sColNo := XLS[0].AsString[ColNo, RowIndex].Trim;
+                if sColNo = '' then Continue;
+
+                ValueIndex := Ceil(ColNo / 64) - 1;
+                ValueArr[ValueIndex] := ValueArr[ValueIndex] or (i64 shl (64 - ColNo));
+                Inc(ValueCount);
+              end;
+
+              AddRow(RowIndex >= XLS[0].LastRow);
+            end; }
+          end;
+          FLog.Log(Format('导入数据：%s 完成', [ExtractFileName(FileName)]));
+        end;
+        StopTime;
+        FLog.Log('导入数据完成');
+        ShowMessage('导入数据完成');
+      except
+        on e: Exception do
+        begin
+          e.Message := '导入数据[%s]失败：' + e.Message;
+          FLog.Log(e.Message);
+          if e.Message.IndexOf('aborted') = -1 then ShowMessage(e.Message);
+        end;
+      end;
+    finally
+      StopTime;
+      SetWorkState(wsNone);
+      FDQuery.Close;
+    end;
+  end).Start;
+end;
+
+procedure TdmProject2.InputResultData;
+var
+  FilePath: string;
+begin
+  if not SelectDirectory('导入数据文件夹', '', FilePath) then Exit;
+
+
+  TTask.Create(procedure
+  var
+    i, j, RowIndex, StartIndex, EndIndex, ValueIndex, FolderNo, FileNo, RowNo,
+    ColCount, ValueCount: Integer;
+    s, SubFilePath, FileName, sFileNo, sColNo: string;
+    ColNo: Int64;
+    ValueArr: array of Int64;
+
+    procedure CheckStop;
+    begin
+      TThread.Synchronize(nil, procedure
+      begin
+        //if frmProject2.btnInputResultData.Tag = 0 then Abort;
+      end);
+    end;
+
+    procedure AddRow(IsLast: Boolean);
+    var
+      i: Integer;
+    begin
+      with FDQuery do
+      begin
+        Append;
+        FieldByName('Id').AsString := BuildGUID;
+        for i := Low(ValueArr) to High(ValueArr) do
+          FieldByName('Field' + (i + 1).ToString).AsLargeInt := ValueArr[i];
+        FieldByName('FolderNo').AsInteger := FolderNo;
+        FieldByName('FileNo').AsInteger := FileNo;
+        FieldByName('RowNo').AsInteger := RowNo;
+        FieldByName('ValueCount').AsInteger := ValueCount;
+        FieldByName('ConformColCount').AsInteger := 0;
+        Post;
+
+        if IsLast or (RecordCount = 10000) then
+        begin
+          ApplyUpdates;
+          Close;
+          Open;
+          OpenFileList;
+        end;
+      end;
+      CheckStop;
+    end;
+  begin
+    SetWorkState(wsInputResultData);
+    StartTime;
+    try
+      try
+        ColCount := ReadKeyValue('ColCount', 0).ToInteger;
+        SetLength(ValueArr, Ceil(ColCount / 64));
+        //获取子目录
+        for SubFilePath in TDirectory.GetDirectories(FilePath) do
+        begin
+          CheckStop;
+          s := ExtractFileName(SubFilePath);
+          if not TryStrToInt(s.Substring(0, s.IndexOf('.')), FolderNo) then Continue;
+          //获取子目录文件
+          for FileName in TDirectory.GetFiles(SubFilePath, '*', TSearchOption.soAllDirectories) do
+          begin
+            CheckStop;
+
+            if not ((LowerCase(ExtractFileExt(FileName)) = '.txt')
+              or (LowerCase(ExtractFileExt(FileName)) = '.xls')
+              or (LowerCase(ExtractFileExt(FileName)) = '.xlsx'))
+            then Continue;
+            s := ExtractFileName(FileName);
+            if not TryStrToInt(s.Substring(0, s.IndexOf('.')), FileNo) then Continue;
+
+            FLog.Log(Format('正在导入数据：%s，请稍等...', [ExtractFileName(FileName)]));
+
+            FDQuery.Open('SELECT TOP 0 * FROM ResultData');
+
+            if LowerCase(ExtractFileExt(FileName)) = '.txt' then
+            begin
+              l.LoadFromFile(FileName);
+              for RowIndex := l.Count - 1 downto 0 do
+                if l[RowIndex].Trim.IsEmpty then l.Delete(RowIndex);
+              for RowIndex := 0 to l.Count - 1 do
+              begin
+                s := l[RowIndex].Trim;
+                if not TryStrToInt(s.Substring(0, s.IndexOf('=')), RowNo) then Continue;
+                s := s.Substring(s.IndexOf('=') + 1);
+                ValueCount := 0;
+                for ValueIndex := Low(ValueArr) to High(ValueArr) do ValueArr[ValueIndex] := 0;
+                repeat
+                  sColNo := SeparateDigit(s);
+                  if TryStrToInt(sColNo, j) then
+                  begin
+                    ColNo := j;
+                    ValueIndex := Ceil(ColNo / 64) - 1;
+                    ValueArr[ValueIndex] := ValueArr[ValueIndex] or (i64 shl (64 - ColNo));
+                    Inc(ValueCount);
+                  end;
+                until s = '';
+
+                AddRow(RowIndex >= l.Count - 1);
+              end;
+            end
+            else
+            begin
+              {XLS.Filename := FileName;
+              XLS.Read;
+              for RowIndex := 1 to XLS[0].LastRow do
+              begin
+                RowNo := RowIndex;
+                ValueCount := 0;
+                for ValueIndex := Low(ValueArr) to High(ValueArr) do ValueArr[ValueIndex] := 0;
+                for ColNo := 1 to ColCount do
+                begin
+                  sColNo := XLS[0].AsString[ColNo, RowIndex].Trim;
+                  if sColNo = '' then Continue;
+
+                  ValueIndex := Ceil(ColNo / 64) - 1;
+                  ValueArr[ValueIndex] := ValueArr[ValueIndex] or (i64 shl (64 - ColNo));
+                  Inc(ValueCount);
+                end;
+
+                AddRow(RowIndex >= XLS[0].LastRow);
+              end; }
+            end;
+            FLog.Log(Format('导入数据：%s 完成', [ExtractFileName(FileName)]));
+          end;
+        end;
+        StopTime;
+        FLog.Log('导入数据完成');
+        ShowMessage('导入数据完成');
+      except
+        on e: Exception do
+        begin
+          e.Message := '导入数据[%s]失败：' + e.Message;
+          FLog.Log(e.Message);
+          if e.Message.IndexOf('aborted') = -1 then ShowMessage(e.Message);
+        end;
+      end;
+    finally
+      StopTime;
+      SetWorkState(wsNone);
+      FDQuery.Close;
+    end;
+  end).Start;
+end;
+
+procedure TdmProject2.InputClearColumn;
+var
+  ValueArr: array of Int64;
+  s, sColNo, Cell, RowRemark, FieldName: string;
+  i, FileNo, ColNo, ColCount, RowNo, ValueIndex: Integer;
+begin
+  ColCount := ReadKeyValue('ColCount', 0).ToInteger;
+  if ColCount <= 0 then Exit;
+  SetLength(ValueArr, Ceil(ColCount / 64));
+
+  frmProject2.OpenDialog.Title := '选择清列行';
+  frmProject2.OpenDialog.Filter := '*|*.txt;*.xls;*.xlsx';
+  frmProject2.OpenDialog.Options := frmProject2.OpenDialog.Options - [ofAllowMultiSelect];
+  if not frmProject2.OpenDialog.Execute then Exit;
+
+  if LowerCase(ExtractFileExt(frmProject2.OpenDialog.FileName)) = '.txt' then
+    l.LoadFromFile(frmProject2.OpenDialog.FileName)
+  else
+  begin
+    {XLS.Filename := FOpenDialog.FileName;
+    XLS.Read;
+    l.Clear;
+    for i := 0 to XLS[0].LastRow do l.Add(XLS[0].AsString[0, i]);}
+  end;
+
+  FDConnection.ExecSQL('TRUNCATE TABLE ClearColumn');
+
+  for i := 0 to l.Count - 1 do
+  begin
+    if not TryStrToInt(l.Names[i], FileNo) then Continue;
+    s := l.ValueFromIndex[i].Trim;
+
+    for ValueIndex := Low(ValueArr) to High(ValueArr) do ValueArr[ValueIndex] := 0;
+    repeat
+      sColNo := SeparateDigit(s);
+
+      if TryStrToInt(sColNo, ColNo) then
+      begin
+        ValueIndex := Ceil(ColNo / 64) - 1;
+        ValueArr[ValueIndex] := ValueArr[ValueIndex] or (i64 shl (64 - ColNo));
+      end;
+    until s = '';
+
+    fdqClearColumn.Append;
+    fdqClearColumn.FieldByName('FileNo').AsInteger := FileNo;
+    fdqClearColumn.FieldByName('RowNo').AsString := '';
+    fdqClearColumn.FieldByName('RowRemark').AsString := '';
+    for ValueIndex := Low(ValueArr) to High(ValueArr) do
+    begin
+      FieldName := 'Field' + (ValueIndex + 1).ToString;
+      fdqClearColumn.FieldByName(FieldName).AsLargeInt := ValueArr[ValueIndex];
+    end;
+    fdqClearColumn.Post;
+  end;
+end;
+
+procedure TdmProject2.SetDeleteInvalidRow;
+var
+  ValidColCount: Integer;
+begin
+  ValidColCount := ReadKeyValue('ValidColCount', 1).ToInteger;
+  if not Input('', '删除各个文本“重复行”;' + #$D#$A + '输入行列数＜', ValidColCount) then Exit;
+  WriteKeyValue('ValidColCount', ValidColCount);
+end;
+
+procedure TdmProject2.ClearColumn;
+begin
+  TTask.Create(procedure
+  var
+    s, FieldName, sField, FileExt, ClearColumnFileName, InputDataFilePath,
+    FileName, sFileNo: string;
+    i, ClearColumnType, FileNo, ColNo, ColCount, ValidColCount: Integer;
+    FieldValue: Int64;
+    IsLocate: Boolean;
+
+    procedure CheckStop;
+    begin
+      TThread.Synchronize(nil, procedure
+      begin
+        if frmProject2.btnClearColumn.Tag = 0 then Abort;
+      end);
+    end;
+  begin
+    TThread.Synchronize(nil, procedure
+    begin
+      ColCount := ReadKeyValue('ColCount', '0').ToInteger;
+      ClearColumnFileName := ReadKeyValue('ClearColumnFileName', '');
+      InputDataFilePath := ReadKeyValue('InputDataFilePath', '');
+      ValidColCount := ReadKeyValue('ValidColCount', 1).ToInteger;
+      ClearColumnType := ReadKeyValue('ClearColumnType', 0).ToInteger;
+    end);
+
+    SetWorkState(wsClearColumn);
+    StartTime;
+    try
+      try
+        repeat
+          case ClearColumnType of
+            0:
+            begin
+              FLog.Log('正在清空“清列行”，请稍等...');
+              fdqClearColumn.Refresh;
+              fdqClearColumn.First;
+              while not fdqClearColumn.Eof do fdqClearColumn.Delete;
+
+              FLog.Log('正在导入“清列行”，请稍等...');
+              {TDataSet(fdqClearColumn).LoadFromFile(ClearColumnFileName,
+              procedure(DataSet: TDataSet)
+              begin
+                CheckStop;
+              end);}
+              FLog.Log('导入“清列行”完成');
+
+              ClearColumnType := 1;
+              WriteKeyValue('ClearColumnType', ClearColumnType);
+            end;
+            1:
+            begin
+              //fdqDataTable2.Open('SELECT TOP 0 * FROM DataTable');
+              for s in TDirectory.GetFiles(InputDataFilePath) do
+              begin
+                CheckStop;
+                FileExt := LowerCase(ExtractFileExt(s));
+                if not (FileExt.Equals('.txt') or FileExt.Equals('.xls') or FileExt.Equals('.xlsx')) then Continue;
+                FileName := ExtractFileName(s);
+                FLog.Log(Format('正在导入“被清列文本”[%s]，请稍等...', [FileName]));
+                sFileNo := ChangeFileExt(ExtractFileName(FileName), '');
+                sFileNo := sFileNo.Substring(sFileNo.IndexOf('(') + 1, sFileNo.IndexOf(')') - sFileNo.IndexOf('(') - 1);
+                if not TryStrToInt(sFileNo, FileNo) then
+                begin
+                  FLog.Log(Format('导入“被清列文本”[%s]失败，文件名格式错误', [FileName]));
+                  Continue;
+                end;
+
+                FDQuery.BeginBatch;
+                {TDataSet(FDQuery).LoadFromFile(s, procedure(DataSet: TDataSet)
+                begin
+                  if FDQuery.RecordCount >= 100000 then
+                  begin
+                    FDQuery.EndBatch;
+                    FDQuery.ApplyUpdates;
+                    FDQuery.Refresh;
+                    FDQuery.BeginBatch;
+                  end;
+                end); }
+                FDQuery.EndBatch;
+                FDQuery.ApplyUpdates;
+                FDQuery.Refresh;
+              end;
+            end;
+          end;
+        until ClearColumnType = -1;
+
+
+        repeat
+          if ClearColumnType = 0 then
+          begin
+            TThread.Synchronize(nil, procedure
+            begin
+              FileNo := ReadKeyValue('ClearColumnFileNo', '0').ToInteger;
+              ColNo := ReadKeyValue('ClearColNo', '1').ToInteger;
+              fdqFileList.First;
+              fdqFileList.Locate('FileNo', FileNo, []);
+            end);
+            while not fdqFileList.Eof do
+            begin
+              CheckStop;
+              TThread.Synchronize(nil, procedure
+              begin
+                FileNo := fdqFileList.FieldByName('FileNo').AsInteger;
+                WriteKeyValue('ClearColumnFileNo', FileNo);
+                IsLocate := fdqClearColumn.Locate('FileNo', FileNo, []);
+              end);
+              if IsLocate then
+              begin
+                for i := ColNo to ColCount do
+                begin
+                  CheckStop;
+                  FieldName := 'Field' + Ceil(i / 64).ToString;
+                  FieldValue := fdqClearColumn.FieldByName(FieldName).AsLargeInt;
+                  if FieldValue = i64 shl (64 - i) or FieldValue then
+                  begin
+                    TThread.Synchronize(nil, procedure
+                    begin
+                      frmProject2.dbgrdClearColumn.SelectedIndex := i - 1;
+                    end);
+
+                    FLog.Log(Format('正在清空文件：%d 列：%d，请稍等...', [FileNo, i]));
+
+                    s := 'DECLARE @iColNo BIGINT' + #$D#$A
+                      + 'SET @iColNo = %d' + #$D#$A
+                      + 'BEGIN TRAN' + #$D#$A
+                      + 'UPDATE DataTable SET %s = %s ^ @iColNo, ValueCount = ValueCount - 1'+ #$D#$A
+                      + 'WHERE FileNo = %d AND %s = %s | @iColNo'+ #$D#$A
+                      + 'COMMIT TRAN';
+                    s := Format(s, [i64 shl (64 - i), FieldName, FieldName, FileNo, FieldName, FieldName]);
+                    FDConnection.ExecSQL(s);
+
+                    WriteKeyValue('ClearColNo', i + 1);
+
+                    FLog.Log(Format('清空文件：%d 列：%d 完成', [FileNo, i]));
+                    //sleep(500);
+                    //Exit;
+                  end;
+                end;
+                ColNo := 1;
+                WriteKeyValue('ClearColNo', ColNo);
+              end;
+              //删除无效行
+              s := 'BEGIN TRAN' + #$D#$A
+                + 'DELETE FROM DataTable WHERE ValueCount < %d' + #$D#$A
+                + 'COMMIT';
+              s := Format(s, [ValidColCount]);
+              FDConnection.ExecSQL(s);
+
+              TThread.Synchronize(nil, procedure
+              begin
+                fdqFileList.Next;
+              end);
+            end;
+            FileNo := 0;
+            WriteKeyValue('ClearColumnFileNo', FileNo);
+
+            fdqFileList.First;
+            if fdqFileList.FieldByName('FileNo').AsInteger = 1 then
+            begin
+              ClearColumnType := -1;
+              WriteKeyValue('ClearColumnType', ClearColumnType);
+            end
+            else
+            begin
+              ClearColumnType := 1;
+              WriteKeyValue('ClearColumnType', ClearColumnType);
+            end;
+          end;
+
+          if ClearColumnType = 1 then
+          begin
+            TThread.Synchronize(nil, procedure
+            begin
+              sField := GetFieldString;
+              FileNo := ReadKeyValue('CombineFileNo', '0').ToInteger;
+              fdqFileList.First;
+              fdqFileList.Locate('FileNo', FileNo, []);
+            end);
+            while not fdqFileList.Eof do
+            begin
+              CheckStop;
+              if fdqFileList.RecNo = fdqFileList.RecordCount then Break;
+              FileNo := fdqFileList.FieldByName('FileNo').AsInteger;
+              FLog.Log(Format('正在合并文件：%d，请稍等...', [FileNo]));
+
+              s := 'WITH CTE AS (' + #$D#$A
+                + 'SELECT *, ROW_NUMBER() OVER(PARTITION BY %s ORDER BY FileNo) RowNo' + #$D#$A
+                + 'FROM DataTable' + #$D#$A
+                + 'WHERE FileNo >= %d' + #$D#$A
+                + ')' + #$D#$A
+                + 'INSERT DataTable SELECT %d, %s, ValueCount' + #$D#$A
+                + 'FROM CTE WHERE FileNo > %d AND RowNo = 1';
+              s := Format(s, [sField, FileNo, FileNo, sField, FileNo]);
+              FDConnection.ExecSQL(s);
+
+              WriteKeyValue('CombineFileNo', FileNo + 1);
+              FLog.Log(Format('合并文件[%d]完成', [FileNo]));
+              //sleep(500);
+              //Exit;
+              TThread.Synchronize(nil, procedure
+              begin
+                fdqFileList.Next;
+              end);
+            end;
+            FileNo := 0;
+            WriteKeyValue('CombineFileNo', FileNo);
+            ClearColumnType := 2;
+            WriteKeyValue('ClearColumnType', ClearColumnType);
+
+            FLog.Log('合并文件完成');
+          end;
+
+          if ClearColumnType = 2 then
+          begin
+            CheckStop;
+            s := 'BEGIN TRAN' + #$D#$A
+              + 'UPDATE DataTable SET FileNo = FileNo - 1' + #$D#$A
+              + 'COMMIT TRAN';
+            FDConnection.ExecSQL(s);
+
+            ClearColumnType := 0;
+            WriteKeyValue('ClearColumnType', ClearColumnType);
+          end;
+
+          OpenFileList;
+        until fdqFileList.Eof or (ClearColumnType = -1);;
+
+        StopTime;
+        frmMain.BringToFront;
+        Flog.Log('执行"清列合并"完成');
+        ShowMessage('执行"清列合并"完成');
+      except
+        on e: Exception do
+        begin
+          e.Message := '执行"清列合并"失败：' + e.Message;
+          Flog.Log(e.Message);
+          if e.Message.IndexOf('aborted') = -1 then ShowMessage(e.Message);
+        end;
+      end;
+    finally
+      StopTime;
+      SetWorkState(wsNone);
+    end;
+  end).Start;
+end;
+
+procedure TdmProject2.SortRow;
+var
+  EachFileRowCount: Integer;
+begin
+  EachFileRowCount := ReadKeyValue('EachFileRowCount', 1000).ToInteger;
+  if not Input('', '输入平均多少行/文本', EachFileRowCount) then Exit;
+  if EachFileRowCount < 1 then raise Exception.Create('请输入有效数值');
+  WriteKeyValue('EachFileRowCount', EachFileRowCount);
+
+  TTask.Create(procedure
+  var
+    s, sField, sOrderBy: string;
+    i: Integer;
+  begin
+    StartTime;
+    try
+      try
+        SetWorkState(wsExecuting);
+        sField := GetFieldString;
+        for i := 1 to Ceil(ReadKeyValue('ColCount', 0).ToInteger / 64) do
+        begin
+          if sOrderBy.IsEmpty then sOrderBy := Format('dbo.BigIntToBinStr(Field%d)', [i])
+          else sOrderBy := sOrderBy + ' + ' + Format('dbo.BigIntToBinStr(Field%d)', [i]);
+        end;
+        sOrderBy := sOrderBy + ' DESC';
+
+        Flog.Log('正在删除重复行，请稍等...');
+        DeleteRepeatRow(True);
+
+        Flog.Log('正在排序，请稍等...');
+        FDConnection.ExecSQL('TRUNCATE TABLE ResultData');
+        s := 'WITH CTE AS(' + #$D#$A
+          + 'SELECT ValueCount, %s, ROW_NUMBER() OVER(PARTITION BY ValueCount ORDER BY %s) RowNo' + #$D#$A
+          + 'FROM DataTable' + #$D#$A
+          + '),' + #$D#$A
+          + 'CTE2 AS(' + #$D#$A
+          + 'SELECT ValueCount, ROW_NUMBER() OVER(ORDER BY ValueCount) FolderNo' + #$D#$A
+          + 'FROM DataTable GROUP BY ValueCount' + #$D#$A
+          + ')' + #$D#$A
+          + 'INSERT INTO ResultData' + #$D#$A
+          + 'SELECT Replace(NewId(), ''-'', ''''),' + #$D#$A
+          + 'CTE2.FolderNo, Ceiling(CTE.RowNo / %d.0),' + #$D#$A
+          + 'CASE CTE.RowNo %% %d WHEN 0 THEN %d ElSE CTE.RowNo %% %d END,' + #$D#$A
+          + 'CTE.ValueCount, %s, 0' + #$D#$A
+          + 'FROM CTE' + #$D#$A
+          + 'LEFT JOIN CTE2 ON CTE2.ValueCount = CTE.ValueCount';
+        s := Format(s, [sField, sOrderBy, EachFileRowCount, EachFileRowCount, EachFileRowCount, EachFileRowCount, sField]);
+        FDConnection.ExecSQL(s);
+
+        StopTime;
+
+        Flog.Log('排序完成');
+        ShowMessage('排序完成');
+      except
+        on e: Exception do
+        begin
+          e.Message := '排序失败：' + e.Message;
+          Flog.Log(e.Message);
+          ShowMessage(e.Message);
+        end;
+      end;
+    finally
+      StopTime;
+      SetWorkState(wsNone);
+    end;
+  end).Start;
+end;
+
+procedure TdmProject2.ExportToFile;
+var
+  sField, ExportFilePath, sFieldValue: string;
+  ColCount, ExportType, EachFileRowCount: Integer;
+begin
+  if not SelectDirectory('选择导出目录', '', ExportFilePath) then Exit;
+  if Copy(ExportFilePath, Length(ExportFilePath) - 1, 1) <> '\' then ExportFilePath := ExportFilePath + '\';
+  ExportType := SingleChoice('', 'TXT' + #$D#$A + 'Excel');
+  if ExportType = -1 then Exit;
+  WriteKeyValue('ExportFilePath', ExportFilePath);
+
+  sField := GetFieldString;
+  ColCount := ReadKeyValue('ColCount', 0).ToInteger;
+  EachFileRowCount := ReadKeyValue('EachFileRowCount', 0).ToInteger;
+
+  TTask.Create(procedure
+  var
+    s, FilePath, FileName: string;
+    i, ValueIndex, ValueCount, FileSerialNo: Integer;
+    FieldValue: Int64;
+    ValueArr: array of string;
+
+    procedure CheckStop;
+    begin
+      TThread.Synchronize(nil, procedure
+      begin
+        if frmProject2.btnExportToFile.Tag = 0 then Abort;
+      end);
+    end;
+
+    function BuildFileName: string;
+    var
+      i, iEnd: Integer;
+      sValue: string;
+    begin
+      iEnd := 5;
+      if ValueCount < 10 then  iEnd := Ceil(ValueCount / 2);
+      for i := 1 to iEnd do
+      begin
+        if i > 1 then sValue := sValue + '、';
+        sValue := sValue + ValueArr[i - 1];
+      end;
+      sValue := '（' + sValue + '）（';
+      if ValueCount < 10 then iEnd := ValueCount - iEnd;
+      for i := iEnd downto 1 do
+      begin
+        if i < iEnd then sValue := sValue + '、';
+        sValue := sValue + ValueArr[Length(ValueArr) - i];
+      end;
+      sValue := sValue + '）';
+
+      Result := Format('%d.%s、%d行', [FileSerialNo, sValue, FDQuery.RecordCount]);
+    end;
+
+    procedure ExportToExcel;
+    var
+      i: Integer;
+    begin
+      {XLS[0].Clear;
+      XLS[0].Rows[0].Height := 440;
+      for i := 1 to ColCount do
+      begin
+        s := i.ToString;
+        if i < 10 then s := '0' + s;
+        XLS[0].AsString[i - 1, 0] := s;
+        XLS[0].Columns[i - 1].Width := 1000;
+      end;
+
+      FDQuery.First;
+      while not FDQuery.Eof do
+      begin
+        CheckStop;
+        XLS[0].Rows[FDQuery.RecNo].Height := 440;
+        ValueIndex := 0;
+        for i := 1 to ColCount do
+        begin
+          s := '';
+          FieldValue := FDQuery.FieldByName('Field' + IntToStr(Ceil(i / 64))).AsLargeInt;
+          if FieldValue = i64 shl (64 - i) or FieldValue then
+          begin
+            s := IntToStr(i);
+            if i < 10 then s := '0' + s;
+
+            ValueArr[ValueIndex] := s;
+            Inc(ValueIndex);
+          end;
+          XLS[0].AsString[i - 1, FDQuery.RecNo] := s;
+        end;
+
+        if FDQuery.RecNo = 1 then FileName := FilePath + BuildFileName + '.xlsx';
+
+        FDQuery.Next;
+      end;
+
+      XLS.Calculate;
+      XLS[0].CalcDimensions;
+      XLS.SaveToFile(FileName); }
+    end;
+
+    procedure ExportToTXT;
+    var
+      i: Integer;
+      sValue: string;
+    begin
+      l.Clear;
+      FDQuery.First;
+      while not FDQuery.Eof do
+      begin
+        CheckStop;
+        ValueIndex := 0;
+        sValue := '';
+        for i := 1 to ColCount do
+        begin
+          s := '';
+          FieldValue := FDQuery.FieldByName('Field' + IntToStr(Ceil(i / 64))).AsLargeInt;
+          if FieldValue = i64 shl (64 - i) or FieldValue then
+          begin
+            s := IntToStr(i);
+            if i < 10 then s := '0' + s;
+
+            if sValue <> '' then sValue := sValue + '、';
+            sValue := sValue + s;
+            ValueArr[ValueIndex] := s;
+
+            Inc(ValueIndex);
+          end;
+        end;
+        l.Values[FDQuery.RecNo.ToString] := sValue;
+
+        if FDQuery.RecNo = 1 then FileName := FilePath + BuildFileName + '.txt';
+
+        FDQuery.Next;
+      end;
+      l.SaveToFile(FileName);
+    end;
+  begin
+    SetWorkState(wsExportToFile);
+    StartTime;
+    try
+      try
+        FLog.Log('正在获取导出文件列表，请稍等...');
+        s := 'WITH CTE AS (' + #$D#$A
+          + 'SELECT ValueCount, FolderNo, FileNo' + #$D#$A
+          + 'FROM ResultData' + #$D#$A
+          + 'GROUP BY ValueCount, FolderNo, FileNo' + #$D#$A
+          + '),' + #$D#$A
+
+          + 'CTE2 AS (' + #$D#$A
+          + 'SELECT ValueCount, Count(ValueCount) ValueRowCount' + #$D#$A
+          + 'FROM ResultData GROUP BY ValueCount' + #$D#$A
+          + '),' + #$D#$A
+
+          + 'CTE3 AS (' + #$D#$A
+          + 'SELECT ValueCount, %s FROM ResultData' + #$D#$A
+          + 'WHERE FileNo = 1 AND RowNo = 1' + #$D#$A
+          + ')' + #$D#$A
+
+          + 'SELECT CTE.FolderNo, CTE.FileNo, CTE2.ValueRowCount, CTE3.*' + #$D#$A
+          + 'FROM CTE' + #$D#$A
+          + 'LEFT JOIN CTE2 ON CTE2.ValueCount = CTE.ValueCount' + #$D#$A
+          + 'LEFT JOIN CTE3 ON CTE3.ValueCount = CTE.ValueCount' + #$D#$A
+          + 'ORDER BY CTE.FolderNo, CTE.FileNo';
+        s := Format(s, [sField]);
+        FDQuery.Open(s);
+        with FDMemTable do
+        begin
+          FDMemTable.Close;
+          Data := FDQuery.Data;
+          First;
+          while not Eof do
+          begin
+            CheckStop;
+            ValueCount := FieldByName('ValueCount').AsInteger;
+            FileSerialNo := FieldByName('FileNo').AsInteger;
+            FLog.Log(Format('正在导出列[%d]文件[%d]，请稍等...', [ValueCount, FileSerialNo]));
+            //生成子目录名
+            sFieldValue := '';
+            for i := 1 to ColCount do
+            begin
+              FieldValue := FieldByName('Field' + IntToStr(Ceil(i / 64))).AsLargeInt;
+              if FieldValue = i64 shl (64 - i) or FieldValue then
+              begin
+                sFieldValue := i.ToString + '-';
+                if i < 10 then sFieldValue := '0' + sFieldValue;
+                Break;
+              end;
+            end;
+            for i := ColCount downto 1 do
+            begin
+              FieldValue := FieldByName('Field' + IntToStr(Ceil(i / 64))).AsLargeInt;
+              if FieldValue = i64 shl (64 - i) or FieldValue then
+              begin
+                if i < 10 then sFieldValue := sFieldValue + '0' + i.ToString
+                else sFieldValue := sFieldValue + i.ToString;
+                Break;
+              end;
+            end;
+            FilePath := ExportFilePath + '%d.首行（首尾）列数字%s、%d列、%d行\';
+            FilePath := Format(FilePath, [
+              FieldByName('FolderNo').AsInteger,
+              sFieldValue,
+              ValueCount,
+              FieldByName('ValueRowCount').AsInteger
+            ]);
+            if not DirectoryExists(FilePath) then CreateDir(FilePath);
+            SetLength(ValueArr, ValueCount);
+
+            s := 'SELECT %s FROM ResultData' + #$D#$A
+              + 'WHERE ValueCount = %d AND FileNo = %d';
+            s := Format(s, [sField, ValueCount, FileSerialNo]);
+            FDQuery.Open(s);
+
+            case ExportType of
+              1: ExportToExcel
+              else ExportToTXT;
+            end;
+
+            FLog.Log(Format('导出列[%d]文件[%d]完成', [ValueCount, FileSerialNo]));
+
+            Next;
+          end;
+        end;
+        StopTime;
+
+        FLog.Log('导出文件完成');
+        ShowMessage('导出文件完成');
+      except
+        on e: Exception do
+        begin
+          e.Message := '导出文件失败：' + e.Message;
+          FLog.Log(e.Message);
+          if e.Message.IndexOf('aborted') = -1 then ShowMessage(e.Message);
+        end;
+      end;
+    finally
+      StopTime;
+      SetWorkState(wsNone);
+    end;
+  end).Start;
+end;
+
+procedure TdmProject2.BuildClearColumn(AFlag: Integer = 0);
+var
+  s, sSerialNo, sColNo: string;
+  i, j, StartIndex, EndIndex, RowNo, ColNo: Integer;
+  ColArr: TIntDyadicArray;
+begin
+  frmProject2.OpenDialog.Filter := '*|*.txt';
+  frmProject2.OpenDialog.Options := frmProject2.OpenDialog.Options - [ofAllowMultiSelect];
+
+  case AFlag of
+    1:
+    begin
+      frmProject2.OpenDialog.Title := '选择"清列文本"文件';
+      if not frmProject2.OpenDialog.Execute then Exit;
+
+      s := ExtractFileName(frmProject2.OpenDialog.FileName);
+      StartIndex := s.IndexOf('(');
+      EndIndex := s.IndexOf(')');
+      sSerialNo := s.Substring(StartIndex + 1, EndIndex - StartIndex - 1);
+      if (StartIndex = -1)
+        or (EndIndex = -1)
+        or (StartIndex > EndIndex)
+        or not TryStrToInt(sSerialNo, StartSerialNo)
+      then raise Exception.Create('文件名格式无效');
+
+      FFileName := frmProject2.OpenDialog.FileName;
+      SaveFileName := ExtractFileName(FFileName);
+      SaveFileName := ExtractFilePath(FFileName) + s.Substring(0, StartIndex + 1) + '%d' + s.Substring(EndIndex, s.Length);
+
+      Exit;
+    end;
+    2:
+    begin
+      frmProject2.OpenDialog.Title := '选择"清列行"文件';
+      if not frmProject2.OpenDialog.Execute then Exit;
+      FFileName2 := frmProject2.OpenDialog.FileName;
+      Exit;
+    end;
+  end;
+  if not (FileExists(FFileName) and FileExists(FFileName2)) then Exit;
+
+  LoadData(FFileName, ColArr);
+  l.LoadFromFile(FFileName2);
+  for i := 0 to l.Count - 1 do
+  begin
+    if not TryStrToInt(l.Names[i].Trim, RowNo) then Continue;
+    RowNo := RowNo - 1;
+    if not ((RowNo >= Low(ColArr)) and (RowNo <= High(ColArr))) then Continue;
+    s := l.ValueFromIndex[i];
+    repeat
+      sSerialNo := SeparateDigit(s);
+      if TryStrToInt(sSerialNo, ColNo) then
+      begin
+        for j := Low(ColArr[RowNo]) to High(ColArr[RowNo]) do
+          if ColArr[RowNo][j] = ColNo then ColArr[RowNo][j] := 0;
+      end;
+    until s = '';
+  end;
+
+  l.Clear;
+  for i := Low(ColArr) to High(ColArr) do
+  begin
+    s := '';
+    for j := Low(ColArr[i]) to High(ColArr[i]) do
+    begin
+      sColNo := ColArr[i][j].ToString;
+      if sColNo = '0' then Continue;
+      if sColNo.Length = 1 then sColNo := '0' + sColNo;
+      if s.IsEmpty then s := sColNo
+      else s := s + '、' + sColNo;
+    end;
+    l.Values[i.ToString] := s;
+  end;
+
+  for j := 0 to l.Count - 1 do
+    l[j] := (j + 1).ToString + '=' + l.ValueFromIndex[j].Trim;
+  l.SaveToFile(Format(SaveFileName, [StartSerialNo]));
+  for i := l.Count - 1 downto 1 do
+  begin
+    l.Delete(0);
+    for j := 0 to l.Count - 1 do
+      l[j] := (j + 1).ToString + '=' + l.ValueFromIndex[j].Trim;
+    Inc(StartSerialNo);
+    l.SaveToFile(Format(SaveFileName, [StartSerialNo]));
+  end;
+  ShowMessage('生成清列行完成');
+end;
+
+procedure TdmProject2.SortClearColumn;
+var
+  i, j: Integer;
+  FileName, s: string;
+begin
+  frmProject2.OpenDialog.Title := '选择清列行';
+  frmProject2.OpenDialog.Filter := '*|*.txt';
+  frmProject2.OpenDialog.Options := frmProject2.OpenDialog.Options + [ofAllowMultiSelect];
+  if not frmProject2.OpenDialog.Execute then Exit;
+  for i := 0 to frmProject2.OpenDialog.Files.Count - 1 do
+  begin
+    FileName := frmProject2.OpenDialog.Files[i];
+    l.LoadFromFile(FileName);
+    for j := l.Count - 1 downto 0 do
+      if l[i].Trim.IsEmpty then l.Delete(j);
+
+    for j := 0 to Floor(l.Count / 2) - 1 do
+    begin
+      s := l[j];
+      l[j] := l[l.Count - j - 1];
+      l[l.Count - j - 1] := s;
+    end;
+
+    l.SaveToFile(FileName);
+  end;
+end;
+
+procedure TdmProject2.RearrangeClearColumn;
+var
+  i, j, k, ColNo: Integer;
+  FileName, s, sColNo: string;
+  ColArr: TIntegerDynArray;
+begin
+  frmProject2.OpenDialog.Title := '选择清列行';
+  frmProject2.OpenDialog.Filter := '*|*.txt';
+  frmProject2.OpenDialog.Options := frmProject2.OpenDialog.Options + [ofAllowMultiSelect];
+  if not frmProject2.OpenDialog.Execute then Exit;
+  for i := 0 to frmProject2.OpenDialog.Files.Count - 1 do
+  begin
+    FileName := frmProject2.OpenDialog.Files[i];
+    l.LoadFromFile(FileName);
+    for j := l.Count - 1 downto 0 do
+      if l[j].Trim.IsEmpty then l.Delete(j);
+
+    //值排序
+    for j := 0 to l.Count - 1 do
+    begin
+      SetLength(ColArr, 0);
+      s := l.ValueFromIndex[j];
+      repeat
+        sColNo := SeparateDigit(s);
+        if TryStrToInt(sColNo, ColNo) then
+        begin
+          SetLength(ColArr, Length(ColArr) + 1);
+          ColArr[Length(ColArr) - 1] := ColNo;
+        end;
+      until s = '';
+      ShellSort(ColArr);
+
+      for k := Low(ColArr) to High(ColArr) do
+      begin
+        sColNo := ColArr[k].ToString;
+        if sColNo.Length = 1 then sColNo := '0' + sColNo;
+        if not s.IsEmpty then s := s + '、';
+        s := s + sColNo;
+      end;
+
+      l.ValueFromIndex[j] := s;
+    end;
+    //插入倒序行号
+    for j := 0 to l.Count - 1 do
+      l[j] := Format('%s(%d)=%s', [l.Names[j], l.Count - j, l.ValueFromIndex[j].Trim]);
+    l.SaveToFile(FileName.Replace('.txt', '副本.txt'));
+    //设置行号
+    for j := 0 to l.Count - 1 do
+      l[j] := (j + 1).ToString + '=' + l.ValueFromIndex[j].Trim;
+    l.SaveToFile(FileName);
+  end;
+end;
+
+procedure TdmProject2.CompareClearColumn;
+var
+  FileName: string;
+  ColArr, ColArr2: TIntDyadicArray;
+
+  procedure CompareRow(RowIndex: Integer; Row, Row2: TIntegerDynArray);
+  var
+    i: Integer;
+    s: string;
+  begin
+    Inc(RowIndex);
+    for i := Low(Row) to High(Row) do
+    begin
+      if (i < Length(Row2)) and (Row[i] = Row2[i]) then Continue;
+      s := Row[i].ToString;
+      if s.Length = 1 then s := '0' + s;
+      if l.Values[RowIndex.ToString].IsEmpty then l.Values[RowIndex.ToString] := s
+      else l.Values[RowIndex.ToString] := l.Values[RowIndex.ToString] + '、' + s;
+
+      if i < Length(Row2) then
+      begin
+        s := Row2[i].ToString;
+        if s.Length = 1 then s := '0' + s;
+      end
+      else s := '@';
+
+      if l.Values[RowIndex.ToString + '@'].IsEmpty then l.Values[RowIndex.ToString + '@'] := s
+      else l.Values[RowIndex.ToString + '@'] := l.Values[RowIndex.ToString + '@'] + '、' + s;
+    end;
+  end;
+
+  procedure CompareData(Arr, Arr2: array of TIntegerDynArray);
+  var
+    i: Integer;
+  begin
+    for i := Low(Arr) to High(Arr) do
+    begin
+      if i < Length(Arr2) then
+      begin
+        if Length(Arr[i]) >= Length(Arr2[i]) then CompareRow(i, Arr[i], Arr2[i])
+        else CompareRow(i, Arr2[i], Arr[i]);
+      end
+      else CompareRow(i, Arr[i], []);
+    end;
+  end;
+begin
+  frmProject2.OpenDialog.Title := '选择清列行';
+  frmProject2.OpenDialog.Filter := '*|*.txt';
+  frmProject2.OpenDialog.Options := frmProject2.OpenDialog.Options + [ofAllowMultiSelect];
+  if not frmProject2.OpenDialog.Execute then Exit;
+  if frmProject2.OpenDialog.Files.Count <> 2 then raise Exception.Create('请选择2个清列行文件');
+
+  FileName := frmProject2.OpenDialog.Files[0];
+  LoadData(FileName, ColArr);
+  FileName := frmProject2.OpenDialog.Files[1];
+  LoadData(FileName, ColArr2);
+
+  l.Clear;
+  if Length(ColArr) >= Length(ColArr2) then CompareData(ColArr, ColArr2)
+  else CompareData(ColArr2, ColArr);
+
+  FileName := ExtractFilePath(FileName) + '比较结果.txt';
+  l.Text := l.Text.Replace('、@', '');
+  l.Text := l.Text.Replace('@', '');
+  l.SaveToFile(FileName);
+end;
+
+procedure TdmProject2.Init;
+var
+  s: string;
+begin
+  with FDConnection.Params do
+  begin
+    Values['DriverID'] := 'SQLite';
+    Values['Database'] := AppFilePath + 'Project';
+  end;
+  FDConnection.Connected := True;
+  fdconnFile.Params.Values['DriverID'] := 'SQLite';
+
+  s := 'CREATE TABLE KeyValue (' + #$D#$A
+    + 'KeyName  VARCHAR (50)  NOT NULL,' + #$D#$A
+    + 'KeyValue VARCHAR (512) NOT NULL' + #$D#$A
+    + ');';
+  FDConnection.SQLiteBuildTable('KeyValue', s);
+
+  s := 'CREATE TABLE Project (' + #$D#$A
+    + 'FileNo   INTEGER       NOT NULL,' + #$D#$A
+    + 'FileName VARCHAR (512) NOT NULL,' + #$D#$A
+    + 'Rowcount INTEGER       NOT NULL,' + #$D#$A
+    + 'FileSize INTEGER       NOT NULL' + #$D#$A
+    + ');' + #$D#$A
+    + 'CREATE INDEX "Project_FileNo" ON Project (FileNo);';
+  FDConnection.SQLiteBuildTable('Project', s);
+
+  s := 'CREATE TABLE ClearColumn (' + #$D#$A
+    + 'FileNo BIGINT NOT NULL,' + #$D#$A
+    + 'Field1 BIGINT NOT NULL,' + #$D#$A
+    + 'Field2 BIGINT NOT NULL,' + #$D#$A
+    + 'Field3 BIGINT NOT NULL,' + #$D#$A
+    + 'Field4 BIGINT NOT NULL' + #$D#$A
+    + ');';
+  FDConnection.SQLiteBuildTable('ClearColumn', s);
+
+  fdqKeyValue.Open;
+  fdqFileList.Open;
+  fdqProject.Open;
+  fdqClearColumn.Open;
+
+  TThread.Synchronize(nil, procedure
+  begin
+    frmProject2.Parent := frmMain;
+    frmProject2.Panel5DblClick(nil);
+  end);
+end;
+
+procedure TdmProject2.QueryData;
+var
+  s, FieldName, sField, sWhere, sFileNo: string;
+  i, ColCount, ConformRowCount, v, RecNo, ChosedCount: Integer;
+  ColNo: Int64;
+begin
+  ColCount := ReadKeyValue('ColCount', 0).ToInteger;
+  sField := 'ValueCount, ' + GetFieldString;
+
+  ChosedCount := 0;
+  RecNo := fdqFileList.RecNo;
+  fdqFileList.DisableControls;
+  try
+    fdqFileList.First;
+    while not fdqFileList.Eof do
+    begin
+      if fdqFileList.FieldByName('Chosed').AsBoolean then
+      begin
+        if sFileNo <> '' then sFileNo := sFileNo + ', ';
+        sFileNo := sFileNo + fdqFileList.FieldByName('FileNo').AsString;
+        Inc(ChosedCount);
+      end;
+
+      fdqFileList.Next;
+    end;
+  finally
+    if RecNo > 0 then fdqFileList.RecNo := RecNo;
+    fdqFileList.EnableControls;
+  end;
+  if ChosedCount = fdqFileList.RecordCount then sFileNo := '';
+  if sFileNo <> '' then
+    sWhere := Format('WHERE FileNo IN (%s)', [sFileNo]) + #$D#$A;
+  s := 'WITH CTE AS(' + #$D#$A
+    + 'SELECT ROW_NUMBER() OVER(ORDER BY (SELECT 0)) PageRowNo, *' + #$D#$A
+    + 'FROM ResultData' + #$D#$A
+    + sWhere
+    + ')' + #$D#$A
+    + 'SELECT * FROM CTE';
+  s := Format(s, [sField]);
+
+  TTask.Create(procedure
+  begin
+    dsDataTable.DataSet := nil;
+    fdqDataTable.Open(s);
+
+    TThread.Synchronize(nil, procedure
+    begin
+      frmProject2.QueryValue := [];
+      frmProject2.BuildDataTableGridColumn(ColCount);
+      dsDataTable.DataSet := fdqDataTable;
+    end);
+  end).Start;
+end;
+
+procedure TdmProject2.QueryData2;
+var
+  FQueryValue: TIntegerDynArray;
+begin
+  if not Assigned(frmQueryConfig2) then frmQueryConfig2 := TfrmQueryConfig2.Create(Self);
+  with frmQueryConfig2 do
+  begin
+    ShowModal;
+    if ModalResult <> 1 then Exit;
+
+    TTask.Create(procedure
+    var
+      s, FieldName, sField, sWhere: string;
+      i, ColCount, ConformRowCount, v, RecNo, ChosedCount: Integer;
+      ColNo: Int64;
+    begin
+      ColCount := ReadKeyValue('ColCount', 0).ToInteger;
+      sField := GetFieldString;
+
+      SetWorkState(wsExecuting);
+      StartTime;
+      try
+        try
+          //查找符合数据
+          if ValueChanged then
+          begin
+            SetLength(FQueryValue, 0);
+            v := 1;
+            for i := 0 to pnlSelect.ControlCount - 1 do
+            begin
+              if not (pnlSelect.Controls[i] is TCheckBox) then Continue;
+              with pnlSelect.Controls[i] as TCheckBox do
+                if Checked then
+                begin
+                  SetLength(FQueryValue, Length(FQueryValue) + 1);
+                  FQueryValue[Length(FQueryValue) - 1] := Tag;
+                end;
+            end;
+            frmProject2.QueryValue := FQueryValue;
+
+            s := 'DECLARE @iColumnNo BIGINT' + #$D#$A
+              + 'BEGIN TRAN' + #$D#$A
+              + 'UPDATE ResultData SET ConformColCount = 0' + #$D#$A;
+            for i := Low(FQueryValue) to High(FQueryValue) do
+            begin
+              v := FQueryValue[i];
+              if v > ColCount then Continue;
+
+              ColNo := i64 shl (64 - v);
+              FieldName := 'Field' + Ceil(v / 64).ToString;
+              s := s + 'SET @iColumnNo = %d' + #$D#$A
+                + 'UPDATE ResultData SET ConformColCount = ConformColCount + 1' + #$D#$A
+                + 'WHERE %s = %s | @iColumnNo' + #$D#$A;
+              s := Format(s, [ColNo, FieldName, FieldName, FieldName]);
+            end;
+            s := s + 'COMMIT TRAN';
+            FDConnection.ExecSQL(s);
+            //页数
+            s := 'SELECT Count(Id) FROM ResultData WHERE ConformColCount > 0';
+            ConformRowCount := VarToStr(FDConnection.ExecSQLScalar(s)).ToInteger;
+            lblMaxPageNo.Caption := Format('/%d页，总行数：%d',
+              [Ceil(ConformRowCount / EachPageRowCount), ConformRowCount]);
+          end;
+          //数据
+          s := 'WITH CTE AS(' + #$D#$A
+            + 'SELECT ROW_NUMBER() OVER(ORDER BY ConformColCount DESC, FolderNo, FileNo, RowNo) PageRowNo, *' + #$D#$A
+            + 'FROM ResultData' + #$D#$A
+            + 'WHERE ConformColCount > 0' + #$D#$A
+            + ')' + #$D#$A
+            + 'SELECT * FROM CTE WHERE PageRowNo BETWEEN %d AND %d';
+          s := Format(s, [(PageNo - 1) * EachPageRowCount + 1, PageNo * EachPageRowCount]);
+
+          dsDataTable.DataSet := nil;
+          fdqDataTable.Open(s);
+          TThread.Synchronize(nil, procedure
+          begin
+            frmProject2.BuildDataTableGridColumn(ColCount, 1);
+            dsDataTable.DataSet := fdqDataTable;
+          end);
+        except
+          on e: Exception do
+          begin
+            e.Message := '查询“相同列数字”：' + e.Message;
+            FLog.Log(e.Message);
+            ShowMessage(e.Message);
+          end;
+        end;
+      finally
+        StopTime;
+        SetWorkState(wsNone);
+      end;
+    end).Start;
+  end;
+end;
+
+procedure TdmProject2.QueryData3;
+begin
+  if not Assigned(frmQueryConfig3) then frmQueryConfig3 := TfrmQueryConfig3.Create(Self);
+  with frmQueryConfig3 do
+  begin
+    ShowModal;
+    if ModalResult <> 1 then Exit;
+
+    TTask.Create(procedure
+    var
+      s, sField, sField2, sJoin: string;
+      i, j, ColCount, ConformRowCount, IdenticalColCount, CompareRowCount,
+      ConformColCount: Integer;
+      FieldValue: Int64;
+    begin
+      IdenticalColCount := StrToInt(edtIdenticalColCount.Text);
+      CompareRowCount := StrToInt(edtCompareRowCount.Text);
+      ColCount := ReadKeyValue('ColCount', 0).ToInteger;
+
+      SetWorkState(wsExecuting);
+      StartTime;
+      try
+        try
+          for i := 1 to CompareRowCount do
+          begin
+            sJoin := sJoin + 'LEFT JOIN ResultData rd%d ON rd%d.FolderNo = rd.FolderNo'
+              + ' AND rd%d.FileNo = rd.FileNo AND rd%d.RowNo = rd.RowNo + %d' + #$D#$A;
+            sJoin := Format(sJoin, [i + 1, i + 1, i + 1, i + 1, i]);
+          end;
+
+          for i := 1 to Ceil(ColCount / 64) do
+          begin
+            for j := 1 to CompareRowCount do
+            begin
+              if not sField.IsEmpty then sField := sField + ' + ';
+              sField := sField + Format('dbo.CalcCount(rd.Field%d & IsNull(rd%d.Field%d, 0))', [i, j + 1, i]);
+            end;
+          end;
+          sField := sField + ' ConformColCount';
+
+          s := 'WITH CTE AS (' + #$D#$A
+            + 'SELECT ' + sField + #$D#$A
+            + 'FROM ResultData rd' + #$D#$A
+            + sJoin
+            + ')' + #$D#$A
+            + 'SELECT ConformColCount, Count(*) TotalCount' + #$D#$A
+            + 'FROM CTE' + #$D#$A
+            + Format('WHERE ConformColCount >= %d' + #$D#$A, [IdenticalColCount])
+            + 'GROUP BY ConformColCount' + #$D#$A
+            + 'ORDER BY Count(*)';
+
+          dsResultData.DataSet := nil;
+          fdqResultData.Open(s);
+
+          TThread.Synchronize(nil, procedure
+          begin
+            dsResultData.DataSet := fdqResultData;
+          end);
+        except
+          on e: Exception do
+          begin
+            e.Message := '查询“相同列数字”：' + e.Message;
+            FLog.Log(e.Message);
+            ShowMessage(e.Message);
+          end;
+        end;
+      finally
+        StopTime;
+        SetWorkState(wsNone);
+      end;
+    end).Start;
+  end;
+end;
+
+end.
+

@@ -1,0 +1,31 @@
+unit ufrmLog;
+
+interface
+
+uses
+  Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, System.Classes, Vcl.Graphics,
+  Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.StdCtrls;
+
+type
+  TfrmLog = class(TForm)
+    mmoLog: TMemo;
+    procedure mmoLogDblClick(Sender: TObject);
+  private
+    { Private declarations }
+  public
+    { Public declarations }
+  end;
+
+var
+  frmLog: TfrmLog;
+
+implementation
+
+{$R *.dfm}
+
+procedure TfrmLog.mmoLogDblClick(Sender: TObject);
+begin
+  mmoLog.Clear;
+end;
+
+end.

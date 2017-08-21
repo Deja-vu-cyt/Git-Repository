@@ -1,0 +1,61 @@
+unit ufrmProject1;
+
+interface
+
+uses
+  Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, System.Classes,
+  Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs, DBGridEhGrouping,
+  ToolCtrlsEh, DBGridEhToolCtrls, DynVarsEh, Vcl.StdCtrls, Vcl.ExtCtrls,
+  Vcl.Menus, EhLibVCL, GridsEh, DBAxisGridsEh, DBGridEh;
+
+type
+  TFrame1 = class(TFrame)
+    dbgrdDataTable: TDBGridEh;
+    MainMenu: TMainMenu;
+    N1: TMenuItem;
+    miRegister: TMenuItem;
+    miTestMode: TMenuItem;
+    Panel1: TPanel;
+    btnSelectClearColumn: TButton;
+    btnClearColumn: TButton;
+    btnExportToFile: TButton;
+    btnDeleteInvalidRow: TButton;
+    btnSetColCount: TButton;
+    btnChangeProject: TButton;
+    btnSortRow: TButton;
+    btnQueryData2: TButton;
+    Panel4: TPanel;
+    pnlUseTime: TPanel;
+    pnlClearColumn: TPanel;
+    pnlInputData: TPanel;
+    btnInputData: TButton;
+    btnRearrangeClearColumn: TButton;
+    btnSortClearColumn: TButton;
+    btnCompareClearColumn: TButton;
+    btnBuildClearColumn: TButton;
+    btnQueryData3: TButton;
+    btnBuildClearColumn2: TButton;
+    btnBuildClearColumn3: TButton;
+    pnlQueryData3: TPanel;
+    btnInputResultData: TButton;
+    btnSetColCount2: TButton;
+    Panel2: TPanel;
+    mmoLog: TMemo;
+    Panel3: TPanel;
+    dbgrdClearColumn: TDBGridEh;
+    dbgrdFileList: TDBGridEh;
+    dbgrdResultData: TDBGridEh;
+    Panel5: TPanel;
+    pnlQueryData2: TPanel;
+    btnQueryData: TButton;
+  private
+    { Private declarations }
+  public
+    { Public declarations }
+  end;
+
+implementation
+
+{$R *.dfm}
+
+end.

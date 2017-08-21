@@ -1,0 +1,57 @@
+object frmMain: TfrmMain
+  Left = 0
+  Top = 0
+  ClientHeight = 709
+  ClientWidth = 1440
+  Color = clBtnFace
+  Constraints.MinHeight = 600
+  Constraints.MinWidth = 800
+  Font.Charset = DEFAULT_CHARSET
+  Font.Color = clWindowText
+  Font.Height = -13
+  Font.Name = 'Tahoma'
+  Font.Style = []
+  Menu = MainMenu
+  OldCreateOrder = False
+  Position = poDesktopCenter
+  Visible = True
+  OnCreate = FormCreate
+  OnShow = FormShow
+  PixelsPerInch = 96
+  TextHeight = 16
+  object StatusBar: TStatusBar
+    Left = 0
+    Top = 690
+    Width = 1440
+    Height = 19
+    Panels = <
+      item
+        Width = 150
+      end>
+  end
+  object MainMenu: TMainMenu
+    Left = 296
+    Top = 8
+    object N1: TMenuItem
+      Caption = #24110#21161
+      object miRegister: TMenuItem
+        Caption = #27880#20876
+        OnClick = miRegisterClick
+      end
+      object miTestMode: TMenuItem
+        Caption = #35843#35797#27169#24335
+        OnClick = miTestModeClick
+      end
+    end
+  end
+  object pmFileList: TPopupMenu
+    Left = 376
+    Top = 8
+    object miSelectAllFileNo: TMenuItem
+      Caption = #20840#36873
+    end
+    object ClearAllFileNo: TMenuItem
+      Caption = #20840#28165
+    end
+  end
+end

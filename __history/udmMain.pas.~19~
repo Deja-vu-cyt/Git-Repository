@@ -1,0 +1,86 @@
+unit udmMain;
+
+interface
+
+uses
+  uLog,
+  System.SysUtils, System.Classes, System.Math, System.JSON, System.Threading,
+  System.IOUtils, System.Variants, System.Generics.Collections, Winapi.Windows,
+  XLSSheetData5, XLSReadWriteII5, Xc12DataStyleSheet5, Xc12Utils5, XLSCmdFormat5,
+  Vcl.Dialogs, Vcl.Forms;
+
+type
+  TdmMain = class(TDataModule)
+    XLS: TXLSReadWriteII5;
+    procedure DataModuleCreate(Sender: TObject);
+    procedure DataModuleDestroy(Sender: TObject);
+  private
+    FOpenDialog: TOpenDialog;
+  public
+    procedure Init;
+    property OpenDialog: TOpenDialog read FOpenDialog;
+  end;
+
+var
+  dmMain: TdmMain;
+
+implementation
+
+uses
+  uGlobal, ufrmMain, ufrmInput, udmRegister, udmProject1;
+
+{%CLASSGROUP 'VCL.Controls.TControl'}
+
+{$R *.dfm}
+
+procedure TdmMain.DataModuleCreate(Sender: TObject);
+begin
+  AppFilePath := ExtractFilePath(ParamStr(0));
+
+  XLS.CmdFormat.BeginEdit(Nil);
+  XLS.CmdFormat.Border.Style := cbsThin;
+  XLS.CmdFormat.Border.Preset(cbspOutline);
+  XLS.CmdFormat.Alignment.Horizontal := chaCenter;
+  XLS.CmdFormat.Alignment.Vertical := cvaCenter;
+  XLS.DefaultFormat := XLS.CmdFormat.AddAsDefault('F1');
+
+  FOpenDialog := TOpenDialog.Create(Self);
+
+  FLog.Start;
+
+  {TThread.Synchronize(nil, procedure
+  begin
+    try
+      frmProject1.mmoLog.Lines.Add(FormatDateTime('YYYY-MM-DD HH:MM:SS', ALogTime));
+      frmProject1.mmoLog.Lines.Add('  ' + AMsg);
+    except
+    end;
+  end); }
+end;
+
+procedure TdmMain.DataModuleDestroy(Sender: TObject);
+begin
+  FLog.Stop;
+  FOpenDialog.Free;
+end;
+
+procedure TdmMain.Init;
+begin
+  //FLog.ShowLogEvent := ShowLog;
+  TTask.Create(procedure
+  begin
+    try
+      Flog.Log('正在检查注册');
+      dmRegister.CheckRegiester;
+
+      dmProject1.Init;
+
+      Flog.Log('初始化完成');
+    finally
+    end;
+  end
+  ).Start;
+end;
+
+end.
+
